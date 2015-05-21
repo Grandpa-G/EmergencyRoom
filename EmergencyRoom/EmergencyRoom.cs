@@ -14,6 +14,7 @@ using Newtonsoft.Json;
 using TerrariaApi.Server;
 using Newtonsoft.Json.Linq;
 using TShockAPI.DB;
+using TShockAPI.Net;
 
 namespace EmergencyRoom
 {
@@ -45,8 +46,6 @@ namespace EmergencyRoom
         }
         public override void Initialize()
         {
-            //            ServerApi.Hooks.NetGetData.Register(this, GetData);
-
             Commands.ChatCommands.Add(new Command("EmergencyRoom.allow", ER, "emergencyroom"));
             Commands.ChatCommands.Add(new Command("EmergencyRoom.allow", ER, "er"));
 
@@ -58,36 +57,37 @@ namespace EmergencyRoom
             }
             base.Dispose(disposing);
         }
-        private static void OnLeave(LeaveEventArgs args)
-        {
-        }
-
-        private void OnLogin(TShockAPI.Hooks.PlayerPostLoginEventArgs args)
-        {
-        }
 
         private void ER(CommandArgs args)
         {
-            bool verbose = false;
-            bool help = false;
             bool addSubtract = false;
             int health = 0;
-            int playerHealth = 10;
+            int playerHealth = 0;
             int priorHealth = 0;
             int mana = 0;
-            int playerMana = 25;
+            int playerMana = 0;
             int priorMana = 0;
             string playerName = "";
-            bool badArg = false;
+            bool noActionRequired = false;
+            bool playerActive = false;
+            TSPlayer player = null;
 
             string arg;
             if (args.Parameters.Count == 0)
-                help = true;
+            {
+                args.Player.SendMessage("Syntax: /EmergencyRoom <user> [-help] ", Color.Red);
+                args.Player.SendMessage("Flags: ", Color.LightSalmon);
+                args.Player.SendMessage("   -help             this information", Color.LightSalmon);
+                args.Player.SendMessage("   -health/-h <+/-n> sets the MaxHealth of player to <n>", Color.LightSalmon);
+                args.Player.SendMessage("   -mana/-h <+/-n>   sets the MaxMana of player to <n>", Color.LightSalmon);
+                return;
+            }
 
             arg = args.Parameters[0];
             {
                 playerName = arg;
             }
+
             if (playerName.Length == 0)
             {
                 args.Player.SendErrorMessage("No player name was given.");
@@ -95,20 +95,34 @@ namespace EmergencyRoom
             }
 
             TShockAPI.DB.User user = TShock.Users.GetUserByName(playerName);
-            foreach (var player in TShock.Players.Where(p => null != p && p.UserAccountName == user.Name))
+            if (user == null)
             {
-                args.Player.SendErrorMessage("Player " + playerName + " active, properties may not be changed.");
+                args.Player.SendErrorMessage("Player " + playerName + " can't be found.");
                 return;
             }
 
-             try
+            playerActive = false;
+            priorHealth = 0;
+            priorMana = 0;
+            var found = TShock.Utils.FindPlayer(playerName);
+            if (found.Count == 1)
             {
-              using (var reader = TShock.DB.QueryReader("SELECT MaxHealth, MaxMana FROM tsCharacter where account =@0", user.ID))
+                player = (TSPlayer)found[0];
+                playerActive = true;
+            }
+            else
+            {
+                playerActive = false;
+            }
+
+            try
+            {
+                using (var reader = TShock.DB.QueryReader("SELECT MaxHealth, MaxMana FROM tsCharacter where account =@0", user.ID))
                 {
                     if (reader.Read())
                     {
-                            priorHealth = reader.Get<Int32>("MaxHealth");
-                         priorMana = reader.Get<Int32>("MaxMana");
+                        priorHealth = reader.Get<Int32>("MaxHealth");
+                        priorMana = reader.Get<Int32>("MaxMana");
                     }
                 }
             }
@@ -119,142 +133,149 @@ namespace EmergencyRoom
                 return;
             }
 
+            //            Console.WriteLine(user.Name + user.ID + " " + priorHealth + ":" + priorMana);
+            playerHealth = priorHealth;
+            playerMana = priorMana;
             for (int i = 1; i < args.Parameters.Count; i++)
             {
                 arg = args.Parameters[i];
-                if (arg.StartsWith("-l"))
+                switch (arg)
                 {
-                }
-                if (arg.StartsWith("-hp"))
-                {
-                    if (i + 1 >= args.Parameters.Count)
-                    {
-                        args.Player.SendErrorMessage("No value give for health");
-                        badArg = true;
-                        break;
-                    }
-                    addSubtract = false;
-                    if (args.Parameters[i + 1].StartsWith("+"))
-                        addSubtract = true;
-                    if (args.Parameters[i + 1].StartsWith("-"))
-                        addSubtract = true;
-                    if (Int32.TryParse(args.Parameters[i + 1], out health))
-                    {
-                        if (health < 0)
+                    case "-x":
+                        if (!playerActive)
                         {
-                            args.Player.SendErrorMessage("Health value may not be negative");
-                            badArg = true;
+                            args.Player.SendErrorMessage("Player " + playerName + " can't be found.");
                             break;
                         }
-                        if (addSubtract)
-                        {
-                            if (playerHealth + health < 0)
-                            {
-                                args.Player.SendErrorMessage("Health value may not be negative");
-                                badArg = true;
-                                break;
-                            }
-                            playerHealth = priorHealth + health;
-                        }
-                        else
-                            playerHealth = health;
-                    }
-                    else
-                    {
-                        args.Player.SendErrorMessage("Health value not an integer");
-                        badArg = true;
                         break;
-                    }
-                    i++;
-                }
-                if (arg.StartsWith("-mana"))
-                {
-                    if (i + 1 >= args.Parameters.Count)
-                    {
-                        args.Player.SendErrorMessage("No value give for mana");
-                        badArg = true;
+                    case "-list":
+                    case "-l":
+                        args.Player.SendInfoMessage("Player " + playerName + " MaxHealth currently at " + priorHealth + " and MaxMana currently at " + priorMana);
+                        noActionRequired = true;
                         break;
-                    }
-                    addSubtract = false;
-                    if (args.Parameters[i + 1].StartsWith("+"))
-                        addSubtract = true;
-                    if (args.Parameters[i + 1].StartsWith("-"))
-                        addSubtract = true;
-                    if (Int32.TryParse(args.Parameters[i + 1], out mana))
-                    {
-                        if (mana < 0)
+                    case "-h":
+                        if (i + 1 >= args.Parameters.Count)
                         {
-                            args.Player.SendErrorMessage("Mana value may not be negative");
-                            badArg = true;
+                            args.Player.SendErrorMessage("No value give for health");
+                            noActionRequired = true;
                             break;
                         }
-                        if (addSubtract)
+                        addSubtract = false;
+                        if (args.Parameters[i + 1].StartsWith("+"))
+                            addSubtract = true;
+                        if (args.Parameters[i + 1].StartsWith("-"))
+                            addSubtract = true;
+                        if (Int32.TryParse(args.Parameters[i + 1], out health))
                         {
-                            if (playerMana + mana < 0)
+                            if (addSubtract)
                             {
-                                args.Player.SendErrorMessage("Mana value may not be negative");
-                                badArg = true;
-                                break;
+                                if (playerHealth + health < 0)
+                                {
+                                    args.Player.SendErrorMessage("Health value may not be negative");
+                                    noActionRequired = true;
+                                    i++;
+                                    break;
+                                }
+                                playerHealth = priorHealth + health;
                             }
-                            playerMana = priorMana + mana;
+                            else
+                                playerHealth = health;
                         }
                         else
-                            playerMana = mana;
-                    }
-                    else
-                    {
-                        args.Player.SendErrorMessage("Mana value not an integer");
-                        badArg = true;
+                        {
+                            args.Player.SendErrorMessage("Health value not an integer");
+                            noActionRequired = true;
+                            break;
+                        }
+                        i++;
                         break;
-                    }
-                    i++;
+
+                    case "-mana":
+                    case "-m":
+                        if (i + 1 >= args.Parameters.Count)
+                        {
+                            args.Player.SendErrorMessage("No value give for mana");
+                            noActionRequired = true;
+                            break;
+                        }
+                        addSubtract = false;
+                        if (args.Parameters[i + 1].StartsWith("+"))
+                            addSubtract = true;
+                        if (args.Parameters[i + 1].StartsWith("-"))
+                            addSubtract = true;
+                        if (Int32.TryParse(args.Parameters[i + 1], out mana))
+                        {
+                           if (addSubtract)
+                            {
+                                if (playerMana + mana < 0)
+                                {
+                                    args.Player.SendErrorMessage("Mana value may not be negative");
+                                    noActionRequired = true;
+                                    i++;
+                                    break;
+                                }
+                                playerMana = priorMana + mana;
+                            }
+                            else
+                                playerMana = mana;
+                        }
+                        else
+                        {
+                            args.Player.SendErrorMessage("Mana value not an integer");
+                            noActionRequired = true;
+                            i++;
+                            break;
+                        }
+                        i++;
+                        break;
+
+                    case "-help":
+                        args.Player.SendMessage("Syntax: /EmergencyRoom <user> [-help] ", Color.Red);
+                        args.Player.SendMessage("Flags: ", Color.LightSalmon);
+                        args.Player.SendMessage("   -help             this information", Color.LightSalmon);
+                        args.Player.SendMessage("   -health/-h <+/-n> sets the MaxHealth of player to <n>", Color.LightSalmon);
+                        args.Player.SendMessage("   -mana/-h <+/-n>   sets the MaxMana of player to <n>", Color.LightSalmon);
+                        return;
+
+                    default:
+                        args.Player.SendErrorMessage("Unkonown command argument:" + arg);
+                        noActionRequired = true;
+                        return;
                 }
             }
-            if (badArg)
+            if (noActionRequired)
                 return;
 
-            if (help)
+            if (playerActive)
             {
-                args.Player.SendMessage("Syntax: /EmergencyRoom <user> [-help] ", Color.Red);
-                args.Player.SendMessage("Flags: ", Color.LightSalmon);
-                args.Player.SendMessage("   -help             this information", Color.LightSalmon);
-                args.Player.SendMessage("   -health/-h <+/-n> sets the health of player to <n>", Color.LightSalmon);
-                args.Player.SendMessage("   -mana/-h <+/-n>   sets the mana of player to <n>", Color.LightSalmon);
-                return;
+                player.TPlayer.statManaMax = playerMana;
+                player.TPlayer.statLifeMax = playerHealth;
+                player.SendData(PacketTypes.PlayerHp, player.Name, player.Index);
+                //                player.SendData(PacketTypes.EffectMana, player.Name, player.Index);
+                player.SendData(PacketTypes.PlayerMana, player.Name, player.Index);
+                player.SendData(PacketTypes.PlayerUpdate, player.Name, player.Index);
             }
- /*
-            if (playerHealth >= TShock.ServerSideCharacterConfig.StartingHealth)
-            {
-                args.Player.SendErrorMessage("Player's health would be greater than max allowed, change rejected.");
-                return;
-            }
-            if (playerMana >= TShock.ServerSideCharacterConfig.StartingMana)
-            {
-                args.Player.SendErrorMessage("Player's mana would be greater than max allowed, change rejected.");
-                return;
-            }
-*/
+
             try
             {
                 using (var reader = TShock.DB.QueryReader("UPDATE tsCharacter SET  MaxHealth = @0, MaxMana = @1 WHERE Account = @2;", playerHealth, playerMana, user.ID))
                 {
-                    args.Player.SendInfoMessage("Player " + playerName + " health changed from " + priorHealth + " to " + playerHealth + " and mana changed from " + priorMana + " to " + playerMana);
                 }
 
             }
             catch (Exception ex)
             {
+                args.Player.SendInfoMessage("Player " + playerName + " no database change.");
                 TShock.Log.Error(ex.ToString());
                 Console.WriteLine(ex.StackTrace);
                 return;
             }
-            /*
-
-                       player.Heal(85);
-                       player.SendSuccessMessage(string.Format("{0} just healed you!", args.Player.Name));
-                       NetMessage.SendData((int)PacketTypes.PlayerHealOther, -1, -1, "", player.TPlayer.whoAmi, playerHealth);
-                       NetMessage.SendData((int)PacketTypes.PlayerMana, -1, -1, "", player.TPlayer.whoAmi, playerMana);
-             * */
+            string message = "";
+            if (priorHealth != playerHealth)
+                message = " MaxHealth changed from " + priorHealth + " to " + playerHealth;
+            if (priorMana != playerMana)
+                message += " MaxMana changed from " + priorMana + " to " + playerMana;
+            args.Player.SendInfoMessage("Player " + playerName + message);
         }
     }
 
