@@ -18,7 +18,7 @@ using TShockAPI.Net;
 
 namespace EmergencyRoom
 {
-    [ApiVersion(1, 17)]
+    [ApiVersion(1, 19)]
     public class EmergencyRoom : TerrariaPlugin
     {
         public static IDbConnection DB;
