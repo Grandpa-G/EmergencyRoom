@@ -18,7 +18,7 @@ using TShockAPI.Net;
 
 namespace EmergencyRoom
 {
-    [ApiVersion(1, 21)]
+    [ApiVersion(1, 22)]
     public class EmergencyRoom : TerrariaPlugin
     {
         public static IDbConnection DB;
@@ -79,7 +79,7 @@ namespace EmergencyRoom
                 args.Player.SendMessage("Flags: ", Color.LightSalmon);
                 args.Player.SendMessage("   -help             this information", Color.LightSalmon);
                 args.Player.SendMessage("   -health/-h <+/-n> sets the MaxHealth of player to <n>", Color.LightSalmon);
-                args.Player.SendMessage("   -mana/-h <+/-n>   sets the MaxMana of player to <n>", Color.LightSalmon);
+                args.Player.SendMessage("   -mana/-m <+/-n>   sets the MaxMana of player to <n>", Color.LightSalmon);
                 return;
             }
 
@@ -150,7 +150,9 @@ namespace EmergencyRoom
                         break;
                     case "-list":
                     case "-l":
-                        args.Player.SendInfoMessage("Player " + playerName + " MaxHealth currently at " + priorHealth + " and MaxMana currently at " + priorMana);
+                        if(playerActive)
+                        args.Player.SendInfoMessage("Player " + playerName + " active");
+                         args.Player.SendInfoMessage("Player " + playerName + " MaxHealth currently at " + priorHealth + " and MaxMana currently at " + priorMana);
                         noActionRequired = true;
                         break;
                     case "-h":
@@ -234,7 +236,7 @@ namespace EmergencyRoom
                         args.Player.SendMessage("Flags: ", Color.LightSalmon);
                         args.Player.SendMessage("   -help             this information", Color.LightSalmon);
                         args.Player.SendMessage("   -health/-h <+/-n> sets the MaxHealth of player to <n>", Color.LightSalmon);
-                        args.Player.SendMessage("   -mana/-h <+/-n>   sets the MaxMana of player to <n>", Color.LightSalmon);
+                        args.Player.SendMessage("   -mana/-m <+/-n>   sets the MaxMana of player to <n>", Color.LightSalmon);
                         return;
 
                     default:
